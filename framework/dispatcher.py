@@ -31,6 +31,10 @@ class Dispatcher:
         self._listeners_by_group = {}
         self._lock = Lock()
 
+    @staticmethod
+    def get_instance():
+        return Dispatcher()
+
     async def get_id(self):
         async with self._lock:
             id = self._next_listener_id
@@ -113,7 +117,7 @@ class Dispatcher:
             else:
                 raise DispatcherError(f"Message has no destination or group ID")
 
-    def _get_or_make_message(self, is_sync: bool, *args, **kwargs):
+    def _get_or_make_message(self, is_sync: bool, args, kwargs):
         if len(args) == 1:
             # This should be the message
             message = args[0]

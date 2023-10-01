@@ -4,6 +4,8 @@ Python message-passing framework
 
 ## Overview
 
+This project is based on twenty-five years of personal experience with message-passing or event-driven frameworks. I've worked in the game industry, in the defense industry, and in robotics. 
+
 Messages are discrete collections of data that travel by various means between message dispatchers and message listeners, via pipelines whose implementation details are taken care of by this library. For the most basic usage, users only need to specify a destination ID, and the pipelines will get the message where it needs to go. This communication can happen within a process, between processes, or even across a network. There will eventually be mechanisms that allow easy interface through GRPC, TCP/IP, Kafka, etc., with minimal setup on the part of the user. 
 
 A message can loosely be thought of as being like a letter. The sender writes a letter, fills out the envelope with address details, drops it in a mailbox, and it gets to its destination via the postal delivery system. The recipient can mail a reply back to the sender's address if they like.

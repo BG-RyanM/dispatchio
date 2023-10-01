@@ -52,7 +52,7 @@ class FilterEntry:
         :return: True if match
         """
         matched_fields = set()
-        for field, value in message:
+        for field, value in message.items():
             if field in self._field_matches.keys() and field not in self._custom_field_names:
                 # Field being filtered for is in the message, so see if value is a match
                 matches = self._field_matches[field]
@@ -164,10 +164,10 @@ class FilteringTable:
         """
         match_dict = {}
         custom_field_names = set()
-        for f_name, matches in field_matches:
+        for f_name, matches in field_matches.items():
             match_dict[f_name] = matches
         if custom_field_matches:
-            for f_name, matches in custom_field_matches:
+            for f_name, matches in custom_field_matches.items():
                 match_dict[f_name] = matches
                 custom_field_names.add(f_name)
         target_type = FilterTargetType.CALLBACK if callback else \
@@ -257,3 +257,10 @@ class MessageListener:
             elif target_type in [FilterTargetType.CALLBACK, FilterTargetType.ASYNC_CALLBACK]:
                 return response
             return None
+
+    @property
+    def filtering_table(self):
+        return self._table
+
+    async def get_queued_message(self):
+        return await self._queue.get()
