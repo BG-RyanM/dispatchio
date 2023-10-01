@@ -291,6 +291,7 @@ class Dispatcher:
                 # Deal with any group replies. We only care about exceptions.
                 remove_ids = []
                 for msg_id, future in self._group_reply_future_table.items():
+                    print("**** why?")
                     if future.done():
                         self._logger.debug(f"Got responses to group message with ID {msg_id}")
                         result_list = await future
@@ -324,7 +325,11 @@ class Dispatcher:
             else:
                 raise DispatcherError(f"No listener registered for destination ID {message.destination_id}")
         elif message.group_id is not None:
-            raise DispatcherError(f"Cannot send synchronous message to group")
+            listeners = self._listeners_by_group.get(message.group_id)
+            if listeners:
+                for listener in listeners:
+                    listener.handle_message_sync(message)
+            return None
         else:
             raise DispatcherError(f"Message has no destination or group ID")
 

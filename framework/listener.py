@@ -85,8 +85,12 @@ class FilterEntry:
         """
         if self._filter_target.type == FilterTargetType.CALLBACK:
             return FilterTargetType.CALLBACK, self._filter_target.target(message)
-        else:
+        elif self._filter_target.type == FilterTargetType.ASYNC_CALLBACK:
             raise ListenerError(f"Cannot send synchronous message {message} to async callback")
+        elif self._filter_target.type == FilterTargetType.QUEUE:
+            return FilterTargetType.QUEUE, None
+        else:
+            raise ListenerError(f"Cannot send synchronous message for some reason")
 
     async def execute(self, message: Dict) -> Tuple[FilterTargetType, Any]:
         """
@@ -109,7 +113,7 @@ class FilterEntry:
 
     def is_sync_friendly(self):
         """Returns True if this FilterEntry can handle a synchronous message"""
-        return self._filter_target.type in [FilterTargetType.CALLBACK]
+        return self._filter_target.type in [FilterTargetType.CALLBACK, FilterTargetType.QUEUE]
 
     @property
     def priority(self):
@@ -243,6 +247,8 @@ class MessageListener:
         """
         # For messages that require an instant response
         target_type, response = self._table.handle_message_sync(message)
+        if target_type == FilterTargetType.QUEUE:
+            self._queue.put_nowait(message)
         return response
 
     async def handle_message(self, message: Message) -> Any:
