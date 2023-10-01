@@ -4,19 +4,21 @@ Python message-passing framework
 
 ## Overview
 
-Messages are discrete collections of data that travel by various means between message dispatchers and message listeners, via pipelines whose implementation details are taken care of by this library. Users only need to specify a source ID and a destination ID, and the pipelines will get the messages where they need to go. This communication can happen within a process, between processes, or even across a network.
+Messages are discrete collections of data that travel by various means between message dispatchers and message listeners, via pipelines whose implementation details are taken care of by this library. For the most basic usage, users only need to specify a destination ID, and the pipelines will get the message where it needs to go. This communication can happen within a process, between processes, or even across a network. There will eventually be mechanisms that allow easy interface through GRPC, TCP/IP, Kafka, etc., with minimal setup on the part of the user. 
 
 A message can loosely be thought of as being like a letter. The sender writes a letter, fills out the envelope with address details, drops it in a mailbox, and it gets to its destination via the postal delivery system. The recipient can mail a reply back to the sender's address if they like.
 
-As with letters, communication is generally asynchronous, but there are methods for synchronous communication, as well. Think of that as being more like a phone call, where you dial a number, speak your message to a person on the other end, receive their reply, then hang up.
+As with letters, communication is generally asynchronous, but there are methods for synchronous communication, as well. Think of that as being more like a phone call, where you dial a number, speak your message to a person on the other end, receive their reply, then hang up. (Except it all happens instantly.)
+
+There's also the concept of group messages, which can be compared to a mailing list. A single message is sent out and copies go to all interested subscribers.
 
 ## Components
 
 ### Message dispatcher
 
-Each process in the application has a single message dispatcher. Client code sends messages to this dispatcher and they are passed on to the relevent message listeners.
+Each process in the application has a single message dispatcher. Client code sends messages to this dispatcher, and they are passed on to the relevant message listeners.
 
-Messages can also be passed to other dispatchers that are running in other processes.
+Messages can also be passed by the local dispatcher to other dispatchers that are running in other processes. Or elsewhere on the network.
 
 Message sending is asynchronous. The dispatcher will always try to get the message to the recipient as an atomic operation, if possible, but it's up to the recipient how to handle it.
 
@@ -24,9 +26,11 @@ Clients of a message dispatcher can request a unique source ID or choose and reg
 
 ### Message listener
 
-Message listeners receive messages from the message dispatcher, according to the type of message or its destination. Once a message is received, the listener can pass it on to a registered callback function, place it on a queue for later access, or send it to another listener.
+Message listeners receive messages from the message dispatcher, according to their destination. Once a message is received, the listener can pass it on to a registered callback function, place it on a queue for later access, or send it to another listener.
 
 A listener must be given a unique destination ID in order for the dispatcher to recognize it. Usually, this ID should be the same as a source ID registered with the message dispatcher. If a listener doesn't have a unique ID, it still may handle messages, but the dispatcher won't be aware of it. However, listeners can be aware of each other and chained together.
+
+As a convenience, listeners can be configured to acknowledge certain messages automatically. 
 
 ### Message
 

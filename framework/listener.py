@@ -3,6 +3,7 @@ from enum import IntEnum
 from asyncio import Lock, Queue
 
 from framework.message import Message
+from framework.exceptions import ListenerError
 
 
 class FilterTargetType(IntEnum):
@@ -30,6 +31,8 @@ class FilterTarget:
 
 class FilterEntry:
 
+    """Defines single row in filtering table. See FilteringTable."""
+
     def __init__(self, field_matches: Dict, custom_field_names: Set, filter_target: FilterTarget, priority: int):
         # Will be a dict mapping field names to list of matches. Applies to main message fields only.
         self._field_matches: Dict = field_matches
@@ -42,7 +45,12 @@ class FilterEntry:
         # Optional user-assigned filter name
         self._name: Optional[str] = None
 
-    def test(self, message: Dict):
+    def test(self, message: Dict) -> bool:
+        """
+        Tests if message matches this filter entry, and it should be executed
+        :param message: message as dict
+        :return: True if match
+        """
         matched_fields = set()
         for field, value in message:
             if field in self._field_matches.keys() and field not in self._custom_field_names:
@@ -65,28 +73,39 @@ class FilterEntry:
         return True
 
     def execute_sync(self, message: Dict) -> Tuple[FilterTargetType, Any]:
+        """
+        Execute synchronous message handling pathway. Will raise exception if not available.
+
+        :param message: --
+        :return: tuple of (FilterTargetType, response from callback or None)
+        :raise: any exception encountered or ListenerError
+        """
         if self._filter_target.type == FilterTargetType.CALLBACK:
-            # Return result of call
-            pass
+            return FilterTargetType.CALLBACK, self._filter_target.target(message)
         else:
-            # Must raise exception
-            pass
-        return self._filter_target.type, None
+            raise ListenerError(f"Cannot send synchronous message {message} to async callback")
 
     async def execute(self, message: Dict) -> Tuple[FilterTargetType, Any]:
+        """
+        Execute asynchronous message handling pathway.
+
+        :param message: --
+        :return: tuple of (FilterTargetType, response from callback or None)
+        :raise: any exception encountered or ListenerError
+        """
         if self._filter_target.type == FilterTargetType.CALLBACK:
-            # Return result of call
-            pass
+            return FilterTargetType.CALLBACK, self._filter_target.target(message)
         elif self._filter_target.type == FilterTargetType.ASYNC_CALLBACK:
-            # Raise exception if instant response required
-            # Return nothing
-            pass
+            if message["synchronous"]:
+                raise ListenerError(f"Cannot send synchronous message {message} to async callback")
+            return FilterTargetType.ASYNC_CALLBACK, await self._filter_target.target(message)
         elif self._filter_target.type == FilterTargetType.QUEUE:
-            # Raise exception if instant response required
-            pass
+            if message["synchronous"]:
+                raise ListenerError(f"Cannot send synchronous message {message} to queue")
         return self._filter_target.type, None
 
     def is_sync_friendly(self):
+        """Returns True if this FilterEntry can handle a synchronous message"""
         return self._filter_target.type in [FilterTargetType.CALLBACK]
 
     @property
@@ -108,6 +127,17 @@ class FilterEntry:
 
 class FilteringTable:
 
+    """
+    See README for basic concept. The filtering table is used to decide what to do with a
+    message based on matching rules applied to its fields.
+
+    For example, we could use:
+    {"message_type": ["X_Key", "Y_Key"]} to match messages whose type is "X_Key" or "Y_Key"
+
+    Non-matching messages will pass by this filter to subsequent filters. Each entry specifies
+    how to handle matching messages.
+    """
+
     def __init__(self):
         self._entries: List[FilterEntry] = []
         # Maps filter entry name (if any) to FilterEntry
@@ -120,14 +150,15 @@ class FilteringTable:
                   priority = -1,
                   name: Optional[str] = None):
         """
-        Adds an entry to table
+        Adds a filter entry to table.
+
         :param field_matches: Dict mapping field name to matches. A match can be a list or a single item.
-            If a match is None, it counts as a wildcard matching any value of field.
         :param custom_field_matches: Same idea as above, but are custom fields in message content
+            If a match is None, it counts as a wildcard matching any value of field.
         :param callback: callback to run
         :param async_callback: async callback to run
-        :param priority: priority to assign to new filter, or -1 to assign automatically. If value is
-            higher than highest value (lowest priority) in table, exception will be raised.
+        :param priority: priority to assign to new filter, or -1 to assign automatically as lowest priority
+            entry. If value is higher than highest value (lowest priority) in table, exception will be raised.
         :param name: optional name to give to entry
         :return: None
         """
@@ -147,21 +178,24 @@ class FilteringTable:
         if name:
             filter_entry.name = name
             if self._name_lookup.get(name):
-                # TODO: raise exception
-                pass
+                raise ListenerError(f"Filter entry already exists with name {name}")
             self._name_lookup[name] = filter_entry
         if priority == -1 or priority == len(self._entries):
             filter_entry.priority = len(self._entries)
             self._entries.append(filter_entry)
         elif priority < 0 or priority > len(self._entries):
-            # TODO: raise exception
-            pass
+            raise ListenerError(f"Invalid filter entry priority {priority}")
         else:
             self._entries.insert(priority, filter_entry)
             for i in range(len(self._entries)):
                 self._entries[i].priority = i
 
     def handle_message_sync(self, message: Union[Message, Dict]) -> Tuple[FilterTargetType, Any]:
+        """
+        Handles a message synchronously.
+        :param message: --
+        :return: (filter target type, result of action, if any)
+        """
         if isinstance(message, Message):
             message = message.to_dict()
         for filter_entry in self._entries:
@@ -171,6 +205,11 @@ class FilteringTable:
         return FilterTargetType.NONE, None
 
     async def handle_message(self, message: Union[Message, Dict]) -> Tuple[FilterTargetType, Any]:
+        """
+        Handles a message asynchronously.
+        :param message: --
+        :return: (filter target type, result of action, if any)
+        """
         if isinstance(message, Message):
             message = message.to_dict()
         for filter_entry in self._entries:
@@ -183,15 +222,38 @@ class FilteringTable:
 class MessageListener:
 
     def __init__(self):
+        self._id: Union[str, int, None] = None
         self._table = FilteringTable()
         self._lock = Lock()
         self._queue = Queue()
 
+    def get_id(self):
+        return self._id
+
+    def set_id(self, id: Union[str, int]):
+        self._id = id
+
     def handle_message_sync(self, message: Message):
+        """
+        Handles a message synchronously.
+        :param message: --
+        :return: callback response, if any
+        """
         # For messages that require an instant response
-        pass
+        target_type, response = self._table.handle_message_sync(message)
+        return response
 
     async def handle_message(self, message: Message):
-        with self._lock:
-            # If there's an instant reply, return that to dispatcher
-            pass
+        """
+        Handles a message asynchronously.
+        :param message: --
+        :return: callback response, if any
+        """
+        async with self._lock:
+            # If there's an instant reply, return that to dispatcher/listener that called
+            target_type, response = await self._table.handle_message(message)
+            if target_type == FilterTargetType.QUEUE:
+                await self._queue.put(message)
+            elif target_type in [FilterTargetType.CALLBACK, FilterTargetType.ASYNC_CALLBACK]:
+                return response
+            return None
