@@ -38,7 +38,7 @@ class CardPlayer(MessageListener):
 
         # First, register players by sending greeting to whole group
         await dispatcher.send_message(message_type="Greeting", source_id=self._id, group_id="All",
-                                      content={"dealer": self._is_dealer})
+                                      content={"dealer": self._is_dealer}, timeout=3.0)
 
         if self._is_dealer:
             # Wait for player greetings to arrive
@@ -50,8 +50,8 @@ class CardPlayer(MessageListener):
             for i in range(20):
                 await dispatcher.send_message(message_type="Card", source_id=self._id,
                                               destination_id=self._player_ids[player_counter],
-                                              content={"card": i})
-                player_counter = (player_counter+1) if player_counter < 3 else 0
+                                              content={"card": i}, timeout=3.0)
+                player_counter = (player_counter + 1) if player_counter < 3 else 0
 
         # Wait for expected card messages
         cards = []
@@ -67,12 +67,13 @@ class CardPlayer(MessageListener):
         if self._is_dealer:
             self._player_ids.append(message["source_id"])
 
+
 async def main():
     """Make four players and get dealing round going"""
     players = []
     tasks = []
     for i in range(4):
-        player = CardPlayer("player" + str(i+1), is_dealer=(i == 0))
+        player = CardPlayer("player" + str(i + 1), is_dealer=(i == 0))
         players.append(player)
         task = asyncio.create_task(player.dealing_round())
         tasks.append(task)

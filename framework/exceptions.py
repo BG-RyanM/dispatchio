@@ -1,4 +1,3 @@
-
 class RegistrationError(Exception):
     """Exception raised for errors in registering or deregistering listener."""
 

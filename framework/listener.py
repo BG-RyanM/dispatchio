@@ -1,9 +1,12 @@
 from typing import List, Dict, Set, Tuple, Union, Optional, Callable, Awaitable, Any
 from enum import IntEnum
 from asyncio import Lock, Queue
+import logging
 
 from framework.message import Message
 from framework.exceptions import ListenerError
+
+_logger = logging.getLogger(__name__)
 
 
 class FilterTargetType(IntEnum):
@@ -16,7 +19,8 @@ class FilterTargetType(IntEnum):
 
 class FilterTarget:
 
-    def __init__(self, type: FilterTargetType, target: Union[Callable[[Any], Any], Callable[[Any], Awaitable[Any]], None]):
+    def __init__(self, type: FilterTargetType,
+                 target: Union[Callable[[Any], Any], Callable[[Any], Awaitable[Any]], None]):
         self._type: FilterTargetType = type
         self._target: Union[Callable[[Any], Any], Callable[[Any], Awaitable[Any]], None] = target
 
@@ -30,7 +34,6 @@ class FilterTarget:
 
 
 class FilterEntry:
-
     """Defines single row in filtering table. See FilteringTable."""
 
     def __init__(self, field_matches: Dict, custom_field_names: Set, filter_target: FilterTarget, priority: int):
@@ -126,7 +129,6 @@ class FilterEntry:
 
 
 class FilteringTable:
-
     """
     See README for basic concept. The filtering table is used to decide what to do with a
     message based on matching rules applied to its fields.
@@ -147,7 +149,7 @@ class FilteringTable:
                   custom_field_matches: Optional[Dict[str, Any]] = None,
                   callback: Optional[Callable[[Any], Any]] = None,
                   async_callback: Optional[Callable[[Any], Awaitable[Any]]] = None,
-                  priority = -1,
+                  priority=-1,
                   name: Optional[str] = None):
         """
         Adds a filter entry to table.
@@ -233,7 +235,7 @@ class MessageListener:
     def set_id(self, id: Union[str, int]):
         self._id = id
 
-    def handle_message_sync(self, message: Message):
+    def handle_message_sync(self, message: Message) -> Any:
         """
         Handles a message synchronously.
         :param message: --
@@ -243,7 +245,7 @@ class MessageListener:
         target_type, response = self._table.handle_message_sync(message)
         return response
 
-    async def handle_message(self, message: Message):
+    async def handle_message(self, message: Message) -> Any:
         """
         Handles a message asynchronously.
         :param message: --

@@ -52,11 +52,35 @@ Lifecycle of message
 
 A message lives until every interested listener has had an opportunity to handle it. The system may make copies a message, rather than passing around the original code object. If a listener places a copy of a message onto a queue, it becomes the responsibility of client code to remove it from the queue.
 
-### A typical listener
+## Message listener behavior
 
+A listener
 - Contains filtering table which specifies what should happen to message of certain characteristics. Think of it like an email filter that routes arriving emails into certain folders depending on sender, subject, and so forth. Messages go to a registered callback, into a queue, or to another chain of listeners
 - Listeners can be customized by subclassing from main listener class. (Concept of pre-filter, post-filter functions.)
 - Filtering table can also filter upon customer message fields
+
+### Different ways of handling a message
+
+Synchronous message
+(send via synchronous `send()` function in Message Dispatcher)
+
+| Handler          | Response from Listener in Same Process                                  | Other Process Response |
+|------------------|-------------------------------------------------------------------------|------------------------|
+| Callback         | Callback return data instantly returned by dispatcher `send()` function | Exception              |
+| Async Callback   | Callback return data sent back to sender via reply message              | Same                   |
+| Message Queue    | Message placed on queue                                                 | Same                   |
+| Another Listener | Message goes to other listener's synchronous handling pathway           | Same                   |
+
+Asynchronous message
+(send via asynchronous `send()` function in Message Dispatcher)
+
+| Handler          | Response from Listener in Same Process                         | Other Process Response |
+|------------------|----------------------------------------------------------------|------------------------|
+| Callback         | Callback return data sent back to sender via reply message     | Same                   |
+| Async Callback   | Callback return data sent back to sender via reply message     | Same                   |
+| Message Queue    | Message placed on queue                                        | Same                   |
+| Another Listener | Message goes to other listener's asynchronous handling pathway | Same                   |
+
 
 ## Game
 

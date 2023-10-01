@@ -37,3 +37,13 @@ class Message:
     @staticmethod
     def from_dict(self, the_dict: Dict[str, Any]):
         return Message(**the_dict)
+
+    def make_copy(self):
+        return Message(message_type=self.message_type, id=self.id, source_id=self.source_id,
+                       destination_id=self.destination_id, group_id=self.group_id,
+                       response_required=self.response_required, is_response=self.is_response,
+                       synchronous=self.synchronous, content=self.content)
+
+    def get_info(self):
+        return (f"type: {self.message_type}, ID: {self.id}, source ID: {self.source_id}, "
+                f"destination ID: {self.destination_id}, group ID: {self.group_id}")
