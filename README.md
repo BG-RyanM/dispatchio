@@ -6,11 +6,19 @@ Python message-passing framework
 
 This project is based on twenty-five years of personal experience with message-passing or event-driven frameworks. I've worked in the game industry, in the defense industry, and in robotics. 
 
-Messages are discrete collections of data that travel by various means between message dispatchers and message listeners, via pipelines whose implementation details are taken care of by this library. For the most basic usage, users only need to specify a destination ID, and the pipelines will get the message where it needs to go. This communication can happen within a process, between processes, or even across a network. There will eventually be mechanisms that allow easy interface through GRPC, TCP/IP, Kafka, etc., with minimal setup on the part of the user. 
+A common feature of such frameworks is that they provide a loose coupling between caller code and called code, compared to the tight coupling of calling a Python function directly. Events or messages can be responded to (or not) at the recipient's discretion, possibly after some amount of time has passed. Messages/events can also be broadcast to multiple recipients. As you might imagine, this can be a very useful system to have when programming a game. Games are often full of independent agents (e.g. game characters) that interact with each other and the game world. Perhaps characters in a game might respond to a message that informs them that a gunshot has been fired nearby. The characters can then change their behavior to running for cover. Other characters might not take any interest in the gunshot at all, such as a bird.
+
+Another use for such frameworks is in the field of robotics, where systems might involve multiple processes running on different machines (or virtual machines, or containers) on a network. For developers of such a system, it's undesirable to have to think about the mechanisms for getting a message from Point A to Point B, such as the networking protocols in the middle. The developer simply wants to send and receive messages, and not have to worry about the pipes through which they pass.
+
+A challenge of developing such systems is that communication over a network can be unreliable, so messages sent by one entity to another must be decoupled from the reply the other might send back. There must be facilities for dealing with non-received replies.  
+
+## Basic Concepts
+
+In this framework, messages are discrete collections of data that travel by various means between message dispatchers and message listeners, via pipelines whose implementation details are taken care of by this library. For the most basic usage, users only need to specify a destination ID or group ID, and the pipelines will get the message where it needs to go. This communication can happen within a process, between processes, or even across a network. There will eventually be mechanisms that allow easy interface through GRPC, TCP/IP, Kafka, etc., with minimal setup on the part of the user. 
 
 A message can loosely be thought of as being like a letter. The sender writes a letter, fills out the envelope with address details, drops it in a mailbox, and it gets to its destination via the postal delivery system. The recipient can mail a reply back to the sender's address if they like.
 
-As with letters, communication is generally asynchronous, but there are methods for synchronous communication, as well. Think of that as being more like a phone call, where you dial a number, speak your message to a person on the other end, receive their reply, then hang up. (Except it all happens instantly.)
+As with letters, communication is generally asynchronous, but there are methods for synchronous communication, as well. Think of that as being more like a phone call, where you dial a number, speak your message to a person on the other end, receive their reply, then hang up. (Except it all happens instantly, much like calling a standard Python or C++ function.)
 
 There's also the concept of group messages, which can be compared to a mailing list. A single message is sent out and copies go to all interested subscribers.
 
