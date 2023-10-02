@@ -10,7 +10,7 @@ base_dir = os.path.abspath(base_dir)
 sys.path.append(base_dir)
 
 from framework.message import Message
-from framework.listener import MessageListener
+from framework.basic_listener import BasicMessageListener
 from framework.dispatcher import Dispatcher
 
 """
@@ -19,7 +19,7 @@ of synchronous messaging.
 """
 
 
-class CardPlayer(MessageListener):
+class CardPlayer(BasicMessageListener):
 
     def __init__(self, name, is_dealer):
         super().__init__()

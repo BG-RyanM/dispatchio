@@ -3,7 +3,7 @@ from typing import List, Optional, Union, Dict, Any, Literal, overload
 from asyncio import Lock, Queue, Event, Task, Future, CancelledError, TimeoutError
 import logging
 
-from framework.listener import MessageListener
+from framework.basic_listener import MessageListener
 from framework.message import Message
 from framework.exceptions import RegistrationError, DispatcherError
 
