@@ -174,6 +174,7 @@ class Dispatcher:
                           ) -> Any:
         """
         Sends a message to interested listeners synchronously
+
         :param message: a complete Message object or Dict version of. If given, all other params
             will be ignored. If not given, other params will be applied in building a new
             message.
@@ -234,7 +235,9 @@ class Dispatcher:
                            content: Any = None
                            ) -> Any:
         """
-        Sends a message to interested listeners asynchronously
+        Sends a message to interested listeners asynchronously. To avoid blocking, doesn't send
+        right away, but queues for later.
+
         :param message: a complete Message object or Dict version of. If given, all other params
             will be ignored. If not given, other params will be applied in building a new
             message.
@@ -258,6 +261,12 @@ class Dispatcher:
                                               synchronous=False, content=content, timeout=timeout)
 
     async def _run_loop(self):
+        """
+        Main workhorse function, runs continuously. Sends queued outgoing messages, and deals with
+        futures/tasks waiting for message reply.
+
+        :return:
+        """
         self._logger.info("In dispatcher run loop.")
         while not self._shutdown:
             # Is there an outgoing message on the queue? If so, send
@@ -291,7 +300,6 @@ class Dispatcher:
                 # Deal with any group replies. We only care about exceptions.
                 remove_ids = []
                 for msg_id, future in self._group_reply_future_table.items():
-                    print("**** why?")
                     if future.done():
                         self._logger.debug(f"Got responses to group message with ID {msg_id}")
                         result_list = await future
@@ -316,6 +324,9 @@ class Dispatcher:
             await asyncio.sleep(0.000001)
 
     def _send_message_sync_impl(self, *args, **kwargs):
+        """
+        Workhorse function for sending synchronous message and dealing with reply.
+        """
         message = self._get_or_make_message(args, kwargs)
         # TODO: special stuff if have to go another dispatcher
         if message.destination_id is not None:
@@ -334,6 +345,9 @@ class Dispatcher:
             raise DispatcherError(f"Message has no destination or group ID")
 
     async def _queue_message_impl(self, *args, **kwargs):
+        """
+        Workhorse function for queuing asynchronous message and waiting for eventual reply.
+        """
         timeout = kwargs.get("timeout", None)
 
         message = self._get_or_make_message(args, kwargs)
@@ -372,6 +386,10 @@ class Dispatcher:
                 return result
 
     async def _send_message_impl(self, message: Message):
+        """
+        Workhorse function for sending queued asynchronous messages. Doesn't wait for replies directly,
+        but creates asyncio tasks to wait.
+        """
         async with self._lock:
             # TODO: special stuff if have to go another dispatcher
             if message.destination_id is not None:
@@ -395,6 +413,7 @@ class Dispatcher:
                 raise DispatcherError(f"Message has no destination or group ID")
 
     def _get_or_make_message(self, args, kwargs):
+        # Helper function
         self._logger.debug(f"Making message, args are {args}, kwargs are {kwargs}")
         is_sync = kwargs["synchronous"]
         if len(args) == 1:
