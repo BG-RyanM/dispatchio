@@ -13,6 +13,11 @@ from framework.message import Message, AsyncMessage
 from framework.basic_listener import BasicMessageListener
 from framework.dispatcher import Dispatcher
 
+"""
+This program demonstrates the idea of blocking messages, by showing a comparison between them and
+non-blocking messages. The concept only applies to asynchronous messages.
+"""
+
 
 class Server(BasicMessageListener):
 
@@ -47,6 +52,8 @@ async def main():
                     done_tasks.add(task)
             await asyncio.sleep(0.1)
 
+    # Non-blocking messages are sent one after another, but replies can happen in any order
+    # (As illustrated by the slow reply to message "A")
     task1 = asyncio.create_task(dispatcher.send_message(message_type="A", destination_id="server",
                                                         response_required=True))
     task2 = asyncio.create_task(dispatcher.send_message(message_type="B", destination_id="server",
@@ -55,9 +62,13 @@ async def main():
                                                         response_required=True))
 
     tasks = [task1, task2, task3]
-    print("Non-blocking:")
+    print("Non-blocking message test:")
+    # We expect replies in the order of: B, C, A
     await _await_replies(tasks)
 
+    # A blocking message won't allow any other async message to be sent until a reply comes back
+    # The other messages passed to send_message() are still queued up behind it, but not sent
+    # until the blocking message receives its reply.
     task1 = asyncio.create_task(dispatcher.send_message(message_type="A", destination_id="server",
                                                         response_required=True, is_blocking=True))
     task2 = asyncio.create_task(dispatcher.send_message(message_type="B", destination_id="server",
@@ -67,13 +78,26 @@ async def main():
 
     tasks = [task1, task2, task3]
     print("Blocking:")
+    # We expect replies in the order of: A, B, C -- the same order messages dispatched
     await _await_replies(tasks)
+
+    await dispatcher.deregister_listener("server")
 
     active_channels, info = dispatcher.test_for_active_channels()
     if active_channels:
         print("Oops, there are still active channels. Info:", info)
     else:
         print("Test complete, no active channels")
+    active_responses, info = dispatcher.test_for_active_awaited_responses()
+    if active_responses:
+        print("Oops, there are still active responses. Info:", info)
+    else:
+        print("Test complete, no active responses")
+    registered_listeners, info = dispatcher.test_for_registered_listeners()
+    if registered_listeners:
+        print("Oops, there are still registered listeners. Info:", info)
+    else:
+        print("Test complete, no registered listeners")
 
 
 asyncio.run(main())

@@ -111,6 +111,24 @@ class Dispatcher:
                     return True, "channel has queued messages: " + channel.get_info()
         return False, None
 
+    def test_for_active_awaited_responses(self) -> Tuple[bool, Optional[str]]:
+        if len(self._reply_event_table) > 0:
+            return True, "reply events still active"
+        if len(self._reply_task_table) > 0:
+            return True, "reply tasks still active"
+        if len(self._group_reply_event_table) > 0:
+            return True, "group reply events still active"
+        if len(self._group_reply_future_table) > 0:
+            return True, "group reply futures still active"
+        return False, None
+
+    def test_for_registered_listeners(self) -> Tuple[bool, Optional[str]]:
+        for _type, submap in self._channel_map.items():
+            for target_id, channel in submap.items():
+                if len(channel.listeners) > 0:
+                    return True, "channel still has listeners: " + channel.get_info()
+        return False, None
+
     async def get_id(self):
         async with self._lock:
             id = self._next_listener_id
@@ -127,7 +145,6 @@ class Dispatcher:
         :raise RegistrationError: if listener with ID already registered
         """
         async with self._lock:
-            print("**** my ID is", listener.get_id())
             if listener.get_id() is None or auto_id:
                 id = self._next_listener_id
                 self._next_listener_id += 1
@@ -141,18 +158,23 @@ class Dispatcher:
             submap[listener.get_id()] = new_channel
             self._logger.info(f"Registered listener with ID {listener.get_id()}")
 
-    async def deregister_listener(self, listener: MessageListener):
+    async def deregister_listener(self, listener: Union[MessageListener, int, str]):
         """
         Deregister listener with dispatcher. Has no effect if listener not registered.
         :param listener: --
         :raise: RegistrationError if listener has no ID
         """
         # TODO: probably don't want to deregister until safe
+        if isinstance(listener, MessageListener):
+            listener_id = listener.get_id()
+        else:
+            listener_id = listener
+
         async with self._lock:
-            if listener.get_id() is not None:
+            if listener_id is not None:
                 submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
-                submap.pop(listener.get_id(), None)
-                self._logger.info(f"Deregistered listener with ID {listener.get_id()}")
+                submap.pop(listener_id, None)
+                self._logger.info(f"Deregistered listener with ID {listener_id}")
             else:
                 raise RegistrationError("Cannot deregister listener with no ID")
 
@@ -196,6 +218,22 @@ class Dispatcher:
                 else:
                     self._logger.info(f"Deregistered listener with ID {listener.get_id()} from group {group_name}")
             submap[group_name].listeners = new_list
+            if len(new_list) == 0:
+                submap.pop(group_name, None)
+
+    async def deregister_listeners_from_group(self, group_name: Union[int, str]):
+        """
+        Unsubscribes all listeners to messages sent to a particular group.
+        :param group_name: --
+        """
+        async with self._lock:
+            submap = self._channel_map[ChannelTargetType.GROUP]
+            if submap.get(group_name) is None:
+                print("**** what the fuck?")
+                return
+            submap[group_name].listeners = []
+            self._logger.info(f"Deregistered all listeners from group {group_name}")
+            submap.pop(group_name, None)
 
     @overload
     def send_message_sync(self, message: Union[SyncMessage, Dict],
