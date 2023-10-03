@@ -20,21 +20,25 @@ non-blocking messages. The concept only applies to asynchronous messages.
 
 
 class Server(BasicMessageListener):
-
     def __init__(self, id: Union[str, int, None] = None):
         super().__init__(id)
-        self.filtering_table.add_entry({"message_type": ["A", "B", "C"]}, async_callback=self.handle_message)
+        self.filtering_table.add_entry(
+            {"message_type": ["A", "B", "C"]}, async_callback=self.custom_handle_message
+        )
 
-    async def handle_message(self, message: AsyncMessage):
+    async def custom_handle_message(self, message: AsyncMessage):
         """Callback that receives messages from client"""
         if message.message_type == "A":
             await asyncio.sleep(3.0)
+            print("xxxx returning A response")
             return "'A' response"
         elif message.message_type == "B":
             await asyncio.sleep(0.4)
+            print("xxxx returning B response")
             return "'B' response"
         elif message.message_type == "C":
             await asyncio.sleep(0.5)
+            print("xxxx returning C response")
             return "'C' response"
 
 
@@ -54,30 +58,56 @@ async def main():
 
     # Non-blocking messages are sent one after another, but replies can happen in any order
     # (As illustrated by the slow reply to message "A")
-    task1 = asyncio.create_task(dispatcher.send_message(message_type="A", destination_id="server",
-                                                        response_required=True))
-    task2 = asyncio.create_task(dispatcher.send_message(message_type="B", destination_id="server",
-                                                        response_required=True))
-    task3 = asyncio.create_task(dispatcher.send_message(message_type="C", destination_id="server",
-                                                        response_required=True))
+    task1 = asyncio.create_task(
+        dispatcher.send_message(
+            message_type="A", destination_id="server", response_required=True
+        )
+    )
+    task2 = asyncio.create_task(
+        dispatcher.send_message(
+            message_type="B", destination_id="server", response_required=True
+        )
+    )
+    task3 = asyncio.create_task(
+        dispatcher.send_message(
+            message_type="C", destination_id="server", response_required=True
+        )
+    )
 
     tasks = [task1, task2, task3]
-    print("Non-blocking message test:")
-    # We expect replies in the order of: B, C, A
+    print("Non-blocking message test, expected reply order is: B, C, A")
     await _await_replies(tasks)
 
     # A blocking message won't allow any other async message to be sent until a reply comes back
     # The other messages passed to send_message() are still queued up behind it, but not sent
     # until the blocking message receives its reply.
-    task1 = asyncio.create_task(dispatcher.send_message(message_type="A", destination_id="server",
-                                                        response_required=True, is_blocking=True))
-    task2 = asyncio.create_task(dispatcher.send_message(message_type="B", destination_id="server",
-                                                        response_required=True, is_blocking=True))
-    task3 = asyncio.create_task(dispatcher.send_message(message_type="C", destination_id="server",
-                                                        response_required=True, is_blocking=True))
+    task1 = asyncio.create_task(
+        dispatcher.send_message(
+            message_type="A",
+            destination_id="server",
+            response_required=True,
+            is_blocking=True,
+        )
+    )
+    task2 = asyncio.create_task(
+        dispatcher.send_message(
+            message_type="B",
+            destination_id="server",
+            response_required=True,
+            is_blocking=True,
+        )
+    )
+    task3 = asyncio.create_task(
+        dispatcher.send_message(
+            message_type="C",
+            destination_id="server",
+            response_required=True,
+            is_blocking=True,
+        )
+    )
 
     tasks = [task1, task2, task3]
-    print("Blocking:")
+    print("Blocking message test, expected reply order is: A, B, C")
     # We expect replies in the order of: A, B, C -- the same order messages dispatched
     await _await_replies(tasks)
 

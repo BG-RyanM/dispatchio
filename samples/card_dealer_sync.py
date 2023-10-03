@@ -20,13 +20,14 @@ of synchronous messaging.
 
 
 class CardPlayer(BasicMessageListener):
-
     def __init__(self, name, is_dealer):
         super().__init__()
         self._id = name
         self._is_dealer = is_dealer
         self._player_ids = []
-        self.filtering_table.add_entry({"message_type": "Greeting"}, callback=self.handle_greeting)
+        self.filtering_table.add_entry(
+            {"message_type": "Greeting"}, callback=self.handle_greeting
+        )
         self.filtering_table.add_entry({"message_type": "Card"})
 
     async def dealing_round(self):
@@ -36,8 +37,12 @@ class CardPlayer(BasicMessageListener):
         await dispatcher.register_listener_in_group(self, "All")
 
         # First, register players by sending greeting to whole group
-        dispatcher.send_message_sync(message_type="Greeting", source_id=self._id, group_id="All",
-                                      content={"dealer": self._is_dealer})
+        dispatcher.send_message_sync(
+            message_type="Greeting",
+            source_id=self._id,
+            group_id="All",
+            content={"dealer": self._is_dealer},
+        )
 
         if self._is_dealer:
             # Wait for player greetings to arrive
@@ -47,9 +52,12 @@ class CardPlayer(BasicMessageListener):
             player_counter = 1
             # Deal out twenty cards, rotating between players
             for i in range(20):
-                dispatcher.send_message_sync(message_type="Card", source_id=self._id,
-                                              destination_id=self._player_ids[player_counter],
-                                              content={"card": i})
+                dispatcher.send_message_sync(
+                    message_type="Card",
+                    source_id=self._id,
+                    destination_id=self._player_ids[player_counter],
+                    content={"card": i},
+                )
                 player_counter = (player_counter + 1) if player_counter < 3 else 0
 
         # Wait for expected card messages
