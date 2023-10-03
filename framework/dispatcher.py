@@ -349,7 +349,7 @@ class Dispatcher:
         )
 
     @overload
-    async def send_message(
+    async def dispatch_message(
         self,
         message: Union[AsyncMessage, Dict],
         message_type: Literal[""] = "",
@@ -366,7 +366,7 @@ class Dispatcher:
         pass
 
     @overload
-    async def send_message(
+    async def dispatch_message(
         self,
         message: Literal[None] = None,
         message_type: str = "",
@@ -382,7 +382,7 @@ class Dispatcher:
     ) -> Any:
         pass
 
-    async def send_message(
+    async def dispatch_message(
         self,
         message: Union[AsyncMessage, Dict, None] = None,
         message_type: str = "",

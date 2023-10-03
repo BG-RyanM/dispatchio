@@ -37,7 +37,7 @@ class Server(BasicMessageListener):
             if msg_type == "D":
                 # wait a bit, then reply
                 await asyncio.sleep(2.0)
-                await dispatcher.send_message(
+                await dispatcher.dispatch_message(
                     is_response=True, id=msg_id, content=msg_type + " response"
                 )
 
@@ -60,13 +60,13 @@ async def main():
     await dispatcher.register_listener(server)
 
     # Do we get a reply to "D" message? We should.
-    response = await dispatcher.send_message(
+    response = await dispatcher.dispatch_message(
         message_type="D", destination_id="server", response_required=True
     )
     print("got deferred reponse: ", response)
 
     try:
-        await dispatcher.send_message(
+        await dispatcher.dispatch_message(
             message_type="X", destination_id="server", response_required=True
         )
     except TestException as te:

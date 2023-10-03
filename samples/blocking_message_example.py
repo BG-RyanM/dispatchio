@@ -57,17 +57,17 @@ async def main():
     # Non-blocking messages are sent one after another, but replies can happen in any order
     # (As illustrated by the slow reply to message "A")
     task1 = asyncio.create_task(
-        dispatcher.send_message(
+        dispatcher.dispatch_message(
             message_type="A", destination_id="server", response_required=True
         )
     )
     task2 = asyncio.create_task(
-        dispatcher.send_message(
+        dispatcher.dispatch_message(
             message_type="B", destination_id="server", response_required=True
         )
     )
     task3 = asyncio.create_task(
-        dispatcher.send_message(
+        dispatcher.dispatch_message(
             message_type="C", destination_id="server", response_required=True
         )
     )
@@ -80,7 +80,7 @@ async def main():
     # The other messages passed to send_message() are still queued up behind it, but not sent
     # until the blocking message receives its reply.
     task1 = asyncio.create_task(
-        dispatcher.send_message(
+        dispatcher.dispatch_message(
             message_type="A",
             destination_id="server",
             response_required=True,
@@ -88,7 +88,7 @@ async def main():
         )
     )
     task2 = asyncio.create_task(
-        dispatcher.send_message(
+        dispatcher.dispatch_message(
             message_type="B",
             destination_id="server",
             response_required=True,
@@ -96,7 +96,7 @@ async def main():
         )
     )
     task3 = asyncio.create_task(
-        dispatcher.send_message(
+        dispatcher.dispatch_message(
             message_type="C",
             destination_id="server",
             response_required=True,

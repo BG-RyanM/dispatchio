@@ -12,6 +12,13 @@ Another use for such frameworks is in the field of robotics, where systems might
 
 A challenge of developing such systems is that communication over a network can be delayed or unreliable, so messages sent by one entity to another must be decoupled from the reply the other might send back. There must be facilities for dealing with non-received replies.  
 
+## What This Framework Does and Doesn't Do
+
+dispatchio is built on top of Python's `async` features. Right now, there's no support for multi-threaded use.
+
+To be written:
+* Features for cross-process use and networking
+
 ## Basic Concepts
 
 In this framework, messages are discrete collections of data that travel by various means between message dispatchers and message listeners, via pipelines whose implementation details are taken care of by this library. For the most basic usage, users only need to specify a destination ID or group ID, and the pipelines get the message where it needs to go. This communication can happen within a process, between processes, or even across a network. There will eventually be mechanisms that allow easy interface through GRPC, TCP/IP, Kafka, etc., with minimal setup on the part of the user. 
@@ -32,7 +39,12 @@ Messages can also be passed by the local dispatcher to other dispatchers that ar
 
 Message sending can be either synchronous or asynchronous. If the former, a response is delivered instantly, just like calling the target function directly. This can only work with recipients in the same process.
 
-If a message is asynchronous, the dispatcher tries to get it to its destination as quickly as possible, then to return to the sender any reply that comes back.
+If a message is asynchronous, the dispatcher tries to get it to its destination as quickly as possible, then to return to the sender any reply that comes back. The dispatcher tries to block its main loop as little as possible, creating `asyncio` tasks that separately transmit messages and wait for replies.
+
+The two key functions offered by the dispatcher are:
+
+* `send_message_sync()`: sends a message synchronously (same-process only). Reply is returned instantly.
+* `dispatch_message()`: queues an asynchronous message for sending. Offers the ability to wait automatically for a reply, with an option for timeout.
 
 ### Message listener
 

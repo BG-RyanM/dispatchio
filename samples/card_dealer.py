@@ -38,7 +38,7 @@ class CardPlayer(BasicMessageListener):
         await dispatcher.register_listener_in_group(self, "All")
 
         # First, register players by sending greeting to whole group
-        await dispatcher.send_message(
+        await dispatcher.dispatch_message(
             message_type="Greeting",
             source_id=self._id,
             group_id="All",
@@ -54,7 +54,7 @@ class CardPlayer(BasicMessageListener):
             player_counter = 1
             # Deal out twenty cards, rotating between players
             for i in range(20):
-                await dispatcher.send_message(
+                await dispatcher.dispatch_message(
                     message_type="Card",
                     source_id=self._id,
                     destination_id=self._player_ids[player_counter],
