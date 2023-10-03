@@ -128,6 +128,7 @@ Asynchronous message
 `card_dealer.py`: Demonstrates message use in card-dealing phase of a game.   
 `card_dealer_sync.py`: Same as above, but with synchronous messages.   
 `deferred_reply_example.py`: Demonstrates concept of deferred replies.        
+`robustness_test.py`: Demonstrates that dispatcher can be shut down cleanly.        
 
 ## Game (ignore this section for now)
 

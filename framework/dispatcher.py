@@ -126,6 +126,39 @@ class Dispatcher:
     def get_instance():
         return Dispatcher()
 
+    async def shutdown(self):
+        print("**** cancelling tasks and futures...")
+        for msg_id, task in self._reply_task_table.items():
+            task.cancel()
+        for msg_id, future in self._group_reply_future_table.items():
+            future.cancel()
+
+        print("**** tasks and future cancelled")
+        # Wait until every task and future has died
+        active_tasks = True
+        active_futures = True
+        while active_tasks or active_futures:
+            active_tasks = len(self._reply_task_table) > 0
+            active_futures = len(self._group_reply_future_table) > 0
+            await asyncio.sleep(0.1)
+        print("**** tasks and futures dead")
+        print("**** shutting down main loop...")
+        self._shutdown = True
+
+        await self._run_loop_task
+        print("**** main loop shut down")
+
+        async with self._lock:
+            # Destroy remaining stuff
+            self._reply_event_table = {}
+            self._reply_table = {}
+            self._group_reply_event_table = {}
+            self._group_reply_table = {}
+            self._blocking_message_id_to_channel = {}
+
+            for _type in self._channel_map.keys():
+                self._channel_map[_type] = {}
+
     def test_for_active_channels(self) -> Tuple[bool, Optional[str]]:
         """
         Returns (True, info string) if there are any channels that are blocking or have
@@ -511,12 +544,16 @@ class Dispatcher:
                 remove_ids = []
                 for msg_id, future in self._group_reply_future_table.items():
                     if future.done():
+                        print("**** future is kaput")
                         self._logger.debug(
                             f"Got responses to group message with ID {msg_id}"
                         )
                         # Overall result of future; will either be None or first exception encountered
                         result = None
-                        reply_list = await future
+                        try:
+                            reply_list = await future
+                        except CancelledError:
+                            reply_list = []
                         for reply in reply_list:
                             if isinstance(reply, Exception):
                                 result = reply
