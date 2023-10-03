@@ -9,7 +9,7 @@ base_dir = os.path.join(current_dir, "../")
 base_dir = os.path.abspath(base_dir)
 sys.path.append(base_dir)
 
-from framework.message import Message
+from framework.message import Message, SyncMessage
 from framework.basic_listener import BasicMessageListener
 from framework.dispatcher import Dispatcher
 
@@ -60,11 +60,11 @@ class CardPlayer(BasicMessageListener):
             print(f"Player {self._id} got card", card)
             cards.append(card)
 
-    def handle_greeting(self, message: Dict):
+    def handle_greeting(self, message: SyncMessage):
         """Callback that receives 'Greeting' message from listener"""
-        print(f"Player {self._id} got greeting from player {message['source_id']}")
+        print(f"Player {self._id} got greeting from player {message.source_id}")
         if self._is_dealer:
-            self._player_ids.append(message["source_id"])
+            self._player_ids.append(message.source_id)
 
 
 async def main():

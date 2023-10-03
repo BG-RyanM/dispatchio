@@ -31,6 +31,11 @@ class Message(ABC):
         return (f"type: {self.message_type}, ID: {self.id}, source ID: {self.source_id}, "
                 f"destination ID: {self.destination_id}, group ID: {self.group_id}")
 
+    def get_dispatcher_target_id(self):
+        if self.destination_id is not None:
+            return self.destination_id
+        return self.group_id
+
 
 class SyncMessage(Message):
 

@@ -49,12 +49,13 @@ class FilterEntry:
         # Optional user-assigned filter name
         self._name: Optional[str] = None
 
-    def test(self, message: Dict) -> bool:
+    def test(self, message_obj: Union[SyncMessage, AsyncMessage]) -> bool:
         """
         Tests if message matches this filter entry, and it should be executed
         :param message: message as dict
         :return: True if match
         """
+        message = message_obj.to_dict()
         matched_fields = set()
         for field, value in message.items():
             if field in self._field_matches.keys() and field not in self._custom_field_names:
@@ -76,7 +77,7 @@ class FilterEntry:
         # TODO: add custom fields stuff
         return True
 
-    def execute_sync(self, message: Dict) -> Tuple[FilterTargetType, Any]:
+    def execute_sync(self, message: SyncMessage) -> Tuple[FilterTargetType, Any]:
         """
         Execute synchronous message handling pathway. Will raise exception if not available.
 
@@ -87,13 +88,13 @@ class FilterEntry:
         if self._filter_target.type == FilterTargetType.CALLBACK:
             return FilterTargetType.CALLBACK, self._filter_target.target(message)
         elif self._filter_target.type == FilterTargetType.ASYNC_CALLBACK:
-            raise ListenerError(f"Cannot send synchronous message {message} to async callback")
+            raise ListenerError(f"Cannot send synchronous message {message.to_dict()} to async callback")
         elif self._filter_target.type == FilterTargetType.QUEUE:
             return FilterTargetType.QUEUE, None
         else:
             raise ListenerError(f"Cannot send synchronous message for some reason")
 
-    async def execute(self, message: Dict) -> Tuple[FilterTargetType, Any]:
+    async def execute(self, message: AsyncMessage) -> Tuple[FilterTargetType, Any]:
         """
         Execute asynchronous message handling pathway.
 
@@ -104,12 +105,9 @@ class FilterEntry:
         if self._filter_target.type == FilterTargetType.CALLBACK:
             return FilterTargetType.CALLBACK, self._filter_target.target(message)
         elif self._filter_target.type == FilterTargetType.ASYNC_CALLBACK:
-            if message["synchronous"]:
-                raise ListenerError(f"Cannot send synchronous message {message} to async callback")
             return FilterTargetType.ASYNC_CALLBACK, await self._filter_target.target(message)
         elif self._filter_target.type == FilterTargetType.QUEUE:
-            if message["synchronous"]:
-                raise ListenerError(f"Cannot send synchronous message {message} to queue")
+            pass
         return self._filter_target.type, None
 
     def is_sync_friendly(self):
@@ -197,28 +195,24 @@ class FilteringTable:
             for i in range(len(self._entries)):
                 self._entries[i].priority = i
 
-    def handle_message_sync(self, message: Union[SyncMessage, Dict]) -> Tuple[FilterTargetType, Any]:
+    def handle_message_sync(self, message: SyncMessage) -> Tuple[FilterTargetType, Any]:
         """
         Handles a message synchronously.
         :param message: --
         :return: (filter target type, result of action, if any)
         """
-        if isinstance(message, SyncMessage):
-            message = message.to_dict()
         for filter_entry in self._entries:
             if filter_entry.test(message):
                 filter_type, result = filter_entry.execute_sync(message)
                 return filter_type, result
         return FilterTargetType.NONE, None
 
-    async def handle_message(self, message: Union[AsyncMessage, Dict]) -> Tuple[FilterTargetType, Any]:
+    async def handle_message(self, message: AsyncMessage) -> Tuple[FilterTargetType, Any]:
         """
         Handles a message asynchronously.
         :param message: --
         :return: (filter target type, result of action, if any)
         """
-        if isinstance(message, AsyncMessage):
-            message = message.to_dict()
         for filter_entry in self._entries:
             if filter_entry.test(message):
                 filter_type, result = await filter_entry.execute(message)
@@ -228,9 +222,8 @@ class FilteringTable:
 
 class BasicMessageListener(MessageListener):
 
-    def __init__(self):
-        super().__init__()
-        self._id: Union[str, int, None] = None
+    def __init__(self, id: Union[str, int, None] = None):
+        super().__init__(id)
         self._table = FilteringTable()
         self._lock = Lock()
         self._queue = Queue()

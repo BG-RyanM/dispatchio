@@ -29,8 +29,8 @@ class MessageListener(ABC):
         indicates to the dispatcher that it should wait for a reply.
     """
 
-    def __init__(self):
-        self._id: Union[str, int, None] = None
+    def __init__(self, id: Union[str, int, None] = None):
+        self._id: Union[str, int, None] = id
         self._queue = Queue()
 
     def get_id(self):

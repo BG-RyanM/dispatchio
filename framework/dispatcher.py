@@ -1,11 +1,50 @@
 import asyncio
-from typing import List, Optional, Union, Dict, Any, Literal, overload
+from enum import IntEnum
+from typing import List, Optional, Union, Dict, Tuple, Any, Literal, overload
 from asyncio import Lock, Queue, Event, Task, Future, CancelledError, TimeoutError
 import logging
 
 from framework.basic_listener import MessageListener
 from framework.message import Message, SyncMessage, AsyncMessage
 from framework.exceptions import RegistrationError, DispatcherError
+
+
+class ChannelTargetType(IntEnum):
+    SINGLE_DESTINATION = 0
+    GROUP = 1
+    OTHER_PROCESS = 2
+
+
+class DispatcherChannel:
+    """
+    A `channel` represents a particular target that the Dispatcher knows about whether a destination ID,
+    a group ID, or a process ID.
+    """
+
+    def __init__(self, target_type: ChannelTargetType, id: Union[str, int]):
+        self.target_type = target_type
+        self.id = id
+        self.outgoing_queue = Queue()
+        self.blocking_id = None
+        self.listeners = []
+
+    @property
+    def currently_blocking(self):
+        return self.blocking_id is not None
+
+    def accepting_new_listeners(self) -> bool:
+        if self.target_type == ChannelTargetType.GROUP:
+            return True
+        elif self.target_type == ChannelTargetType.SINGLE_DESTINATION:
+            return len(self.listeners) == 0
+        else:
+            return False
+
+    def get_info(self) -> str:
+        type_map = {ChannelTargetType.SINGLE_DESTINATION: "Destination ID",
+                    ChannelTargetType.GROUP: "Group ID",
+                    ChannelTargetType.OTHER_PROCESS: "Process ID"}
+        return f"{type_map[self.target_type]}: {self.id}"
 
 
 class Dispatcher:
@@ -33,14 +72,11 @@ class Dispatcher:
 
         self._next_listener_id = 0
         self._next_message_id = 0
-        self._listeners_by_id: Dict[Union[str, int], MessageListener] = {}
-        self._listeners_by_group = {}
         self._lock = Lock()
         self._shutdown = False
 
         self._run_loop_task = asyncio.create_task(self._run_loop())
 
-        self._outgoing_message_queue = Queue()
         # Holds async tasks that are waiting on reply from async callbacks
         # Maps message ID to task
         self._reply_task_table: Dict[int, Task] = {}
@@ -55,9 +91,25 @@ class Dispatcher:
         # Exceptions only
         self._group_reply_table: Dict[int, Optional[Exception]] = {}
 
+        # maps {target_type : {ID: DispatcherChannel}}
+        targets = [ChannelTargetType.GROUP, ChannelTargetType.SINGLE_DESTINATION, ChannelTargetType.OTHER_PROCESS]
+        self._channel_map: Dict[ChannelTargetType, Dict[Union[str, int], DispatcherChannel]] = {i: {} for i, target in
+                                                                                                enumerate(targets)}
+
+        self._blocking_message_id_to_channel: Dict[Union[str, int], DispatcherChannel] = {}
+
     @staticmethod
     def get_instance():
         return Dispatcher()
+
+    def test_for_active_channels(self) -> Tuple[bool, Optional[str]]:
+        for _type, submap in self._channel_map.items():
+            for target_id, channel in submap.items():
+                if channel.currently_blocking:
+                    return True, "blocked channel: " + channel.get_info()
+                if not channel.outgoing_queue.empty():
+                    return True, "channel has queued messages: " + channel.get_info()
+        return False, None
 
     async def get_id(self):
         async with self._lock:
@@ -75,14 +127,18 @@ class Dispatcher:
         :raise RegistrationError: if listener with ID already registered
         """
         async with self._lock:
+            print("**** my ID is", listener.get_id())
             if listener.get_id() is None or auto_id:
                 id = self._next_listener_id
                 self._next_listener_id += 1
                 listener.set_id(id)
             else:
-                if self._listeners_by_id.get(listener.get_id()):
+                submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
+                if submap.get(listener.get_id()):
                     raise RegistrationError(f"Listener already registered with ID {listener.get_id()}")
-            self._listeners_by_id[listener.get_id()] = listener
+            new_channel = DispatcherChannel(ChannelTargetType.SINGLE_DESTINATION, listener.get_id())
+            new_channel.listeners = [listener]
+            submap[listener.get_id()] = new_channel
             self._logger.info(f"Registered listener with ID {listener.get_id()}")
 
     async def deregister_listener(self, listener: MessageListener):
@@ -91,9 +147,11 @@ class Dispatcher:
         :param listener: --
         :raise: RegistrationError if listener has no ID
         """
+        # TODO: probably don't want to deregister until safe
         async with self._lock:
             if listener.get_id() is not None:
-                self._listeners_by_id.pop(listener.get_id(), None)
+                submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
+                submap.pop(listener.get_id(), None)
                 self._logger.info(f"Deregistered listener with ID {listener.get_id()}")
             else:
                 raise RegistrationError("Cannot deregister listener with no ID")
@@ -107,9 +165,11 @@ class Dispatcher:
         :return:
         """
         async with self._lock:
-            if self._listeners_by_group.get(group_name) is None:
-                self._listeners_by_group[group_name] = []
-            listener_list = self._listeners_by_group[group_name]
+            submap = self._channel_map[ChannelTargetType.GROUP]
+            if submap.get(group_name) is None:
+                new_channel = DispatcherChannel(ChannelTargetType.GROUP, group_name)
+                submap[group_name] = new_channel
+            listener_list = submap[group_name].listeners
             for existing_listener in listener_list:
                 if existing_listener is listener:
                     self._logger.warning(
@@ -125,16 +185,17 @@ class Dispatcher:
         :param group_name: --
         """
         async with self._lock:
-            if self._listeners_by_group.get(group_name) is None:
+            submap = self._channel_map[ChannelTargetType.GROUP]
+            if submap.get(group_name) is None:
                 return
-            listener_list = self._listeners_by_group[group_name]
+            listener_list = submap[group_name].listeners
             new_list = []
             for existing_listener in listener_list:
                 if existing_listener is not listener:
                     new_list.append(existing_listener)
                 else:
                     self._logger.info(f"Deregistered listener with ID {listener.get_id()} from group {group_name}")
-            self._listeners_by_group[group_name] = new_list
+            submap[group_name].listeners = new_list
 
     @overload
     def send_message_sync(self, message: Union[SyncMessage, Dict],
@@ -197,6 +258,7 @@ class Dispatcher:
                            group_id: Literal[None] = None,
                            response_required: Literal[False] = False,
                            is_response: Literal[False] = False,
+                           is_blocking: Literal[False] = False,
                            timeout: Optional[float] = None,
                            content: Literal[None] = None
                            ) -> Any:
@@ -211,6 +273,7 @@ class Dispatcher:
                            group_id: Union[str, int, None] = None,
                            response_required: bool = False,
                            is_response: bool = False,
+                           is_blocking: bool = False,
                            timeout: Optional[float] = None,
                            content: Any = None
                            ) -> Any:
@@ -224,6 +287,7 @@ class Dispatcher:
                            group_id: Union[str, int, None] = None,
                            response_required: bool = False,
                            is_response: bool = False,
+                           is_blocking: bool = False,
                            timeout: Optional[float] = None,
                            content: Any = None
                            ) -> Any:
@@ -242,6 +306,7 @@ class Dispatcher:
         :param response_required: if True, a response must be given.
             TODO: more notes
         :param is_response: if True, this message is a response to another
+        :param is_blocking: TODO: explain
         :param timeout: if given, specifies how long to wait for response
         :param content: message content object. Should be cast-able to dict.
         :return: reply from other side, or None, if not given
@@ -251,6 +316,7 @@ class Dispatcher:
         return await self._queue_message_impl(message=message, message_type=message_type, id=id, source_id=source_id,
                                               destination_id=destination_id, group_id=group_id,
                                               response_required=response_required, is_response=is_response,
+                                              is_blocking=is_blocking,
                                               synchronous=False, content=content, timeout=timeout)
 
     async def _run_loop(self):
@@ -262,14 +328,22 @@ class Dispatcher:
         """
         self._logger.info("In dispatcher run loop.")
         while not self._shutdown:
-            # Is there an outgoing message on the queue? If so, send
-            if not self._outgoing_message_queue.empty():
-                message = await self._outgoing_message_queue.get()
-                self._logger.debug(f"Dispatching message from queue: {message.get_info()}")
-                # Will do work from behind lock
-                await self._send_message_impl(message)
-
             async with self._lock:
+                # Is there an outgoing message on some channel's queue? If so, send
+                for k, submap in self._channel_map.items():
+                    for _id, channel in submap.items():
+                        if channel.currently_blocking:
+                            # Don't get anything from queue until blocking is done
+                            pass
+                        elif not channel.outgoing_queue.empty():
+                            message: AsyncMessage = await channel.outgoing_queue.get()
+                            # Should we block channel until reply comes back?
+                            channel.blocking_id = message.get_dispatcher_target_id() if message.is_blocking else None
+                            if channel.blocking_id is not None:
+                                self._blocking_message_id_to_channel[message.id] = channel
+                            self._logger.debug(f"Dispatching message from queue: {message.get_info()}")
+                            await self._send_message_impl(message)
+
                 # Deal with any replies that have come back
                 remove_ids = []
                 for msg_id, task in self._reply_task_table.items():
@@ -284,6 +358,12 @@ class Dispatcher:
                         self._reply_table[msg_id] = result
                         self._reply_event_table[msg_id].set()
                         remove_ids.append(msg_id)
+
+                        # Unblock channel if it was being blocked
+                        channel = self._blocking_message_id_to_channel.get(msg_id)
+                        if channel:
+                            channel.blocking_id = None
+                            self._blocking_message_id_to_channel.pop(msg_id, None)
                 for msg_id in remove_ids:
                     try:
                         self._reply_task_table.pop(msg_id)
@@ -306,6 +386,12 @@ class Dispatcher:
                             self._group_reply_table[msg_id] = None
                         self._group_reply_event_table[msg_id].set()
                         remove_ids.append(msg_id)
+
+                        # Unblock channel if it was being blocked
+                        channel = self._blocking_message_id_to_channel.get(msg_id)
+                        if channel:
+                            channel.blocking_id = None
+                            self._blocking_message_id_to_channel.pop(msg_id, None)
                 for msg_id in remove_ids:
                     try:
                         self._group_reply_future_table.pop(msg_id)
@@ -323,15 +409,17 @@ class Dispatcher:
         message = self._get_or_make_message(args, kwargs)
         # TODO: special stuff if have to go another dispatcher
         if message.destination_id is not None:
-            listener = self._listeners_by_id.get(message.destination_id)
-            if listener:
-                return listener.handle_message_sync(message)
+            submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
+            channel = submap.get(message.destination_id)
+            if channel:
+                return channel.listeners[0].handle_message_sync(message)
             else:
                 raise DispatcherError(f"No listener registered for destination ID {message.destination_id}")
         elif message.group_id is not None:
-            listeners = self._listeners_by_group.get(message.group_id)
-            if listeners:
-                for listener in listeners:
+            submap = self._channel_map[ChannelTargetType.GROUP]
+            channel = submap.get(message.group_id)
+            if channel:
+                for listener in channel.listeners:
                     listener.handle_message_sync(message)
             return None
         else:
@@ -352,11 +440,22 @@ class Dispatcher:
             reply_event = asyncio.Event()
             if is_group_msg:
                 self._group_reply_event_table[message.id] = reply_event
+                submap = self._channel_map[ChannelTargetType.GROUP]
+                id_to_use = message.group_id
+                msg_type = "Group"
             else:
                 self._reply_event_table[message.id] = reply_event
+                submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
+                id_to_use = message.destination_id
+                msg_type = "Single Destination"
 
             self._logger.debug(f"Queueing outgoing message {message.get_info()}")
-            await self._outgoing_message_queue.put(message)
+
+            channel = submap.get(id_to_use)
+            if channel:
+                await channel.outgoing_queue.put(message)
+            else:
+                raise DispatcherError(f"Nowhere to send message of type: {msg_type}, id: {id_to_use}")
 
         # Now, we wait on event
         if reply_event:
@@ -383,27 +482,31 @@ class Dispatcher:
         Workhorse function for sending queued asynchronous messages. Doesn't wait for replies directly,
         but creates asyncio tasks to wait.
         """
-        async with self._lock:
-            # TODO: special stuff if have to go another dispatcher
-            if message.destination_id is not None:
-                listener = self._listeners_by_id.get(message.destination_id)
-                if listener:
-                    # Create a task to wait for response, self._run_loop() will deal with eventual reply
-                    reply_task = asyncio.create_task(listener.handle_message(message))
-                    self._reply_task_table[message.id] = reply_task
-                else:
-                    raise DispatcherError(f"No listener registered for destination ID {message.destination_id}")
-            elif message.group_id is not None:
-                listener_list = self._listeners_by_group.get(message.group_id)
-                if listener_list:
-                    reply_tasks = []
-                    for listener in listener_list:
-                        reply_task = asyncio.create_task(listener.handle_message(message))
-                        reply_tasks.append(reply_task)
-                    group_future = asyncio.gather(*reply_tasks, return_exceptions=True)
-                    self._group_reply_future_table[message.id] = group_future
+        # TODO: special stuff if have to go another dispatcher
+
+        # Will be called from behind lock
+        if message.destination_id is not None:
+            submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
+            channel = submap.get(message.destination_id)
+            if channel:
+                # Create a task to wait for response, self._run_loop() will deal with eventual reply
+                reply_task = asyncio.create_task(channel.listeners[0].handle_message(message))
+                self._reply_task_table[message.id] = reply_task
             else:
-                raise DispatcherError(f"Message has no destination or group ID")
+                raise DispatcherError(f"No listener registered for destination ID {message.destination_id}")
+        elif message.group_id is not None:
+            submap = self._channel_map[ChannelTargetType.GROUP]
+            channel = submap.get(message.group_id)
+            if channel:
+                reply_tasks = []
+                listener_list = channel.listeners
+                for listener in listener_list:
+                    reply_task = asyncio.create_task(listener.handle_message(message))
+                    reply_tasks.append(reply_task)
+                group_future = asyncio.gather(*reply_tasks, return_exceptions=True)
+                self._group_reply_future_table[message.id] = group_future
+        else:
+            raise DispatcherError(f"Message has no destination or group ID")
 
     def _get_or_make_message(self, args, kwargs):
         # Helper function
