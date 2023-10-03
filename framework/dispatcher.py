@@ -514,23 +514,18 @@ class Dispatcher:
                         self._logger.debug(
                             f"Got responses to group message with ID {msg_id}"
                         )
-                        result_list = await future
-                        got_exception = False
-                        for result in result_list:
-                            if isinstance(result, Exception):
-                                self._group_reply_table[msg_id] = result
-                                got_exception = True
+                        # Overall result of future; will either be None or first exception encountered
+                        result = None
+                        reply_list = await future
+                        for reply in reply_list:
+                            if isinstance(reply, Exception):
+                                result = reply
                                 break
-                        if not got_exception:
-                            self._group_reply_table[msg_id] = None
-                        self._group_reply_event_table[msg_id].set()
-                        remove_ids.append(msg_id)
 
-                        # Unblock channel if it was being blocked
-                        channel = self._blocking_message_id_to_channel.get(msg_id)
-                        if channel:
-                            channel.blocking_id = None
-                            self._blocking_message_id_to_channel.pop(msg_id, None)
+                        handled = self._handle_group_message_replies(msg_id, result)
+                        if handled:
+                            remove_ids.append(msg_id)
+
                 for msg_id in remove_ids:
                     try:
                         self._group_reply_future_table.pop(msg_id)
@@ -560,6 +555,27 @@ class Dispatcher:
         if channel:
             channel.blocking_id = None
             self._blocking_message_id_to_channel.pop(msg_id, None)
+        return True
+
+    def _handle_group_message_replies(self, msg_id: int, result: Any) -> bool:
+        """
+        Helper function called when a collection of group messages have received all
+        their replies. Returns true if some future is waiting on replies and will now
+        be able to be done.
+        """
+        if not self._group_reply_event_table.get(msg_id):
+            # Nobody is waiting to find out about outcome
+            return False
+
+        self._group_reply_table[msg_id] = result
+        self._group_reply_event_table[msg_id].set()
+
+        # Unblock channel if it was being blocked
+        channel = self._blocking_message_id_to_channel.get(msg_id)
+        if channel:
+            channel.blocking_id = None
+            self._blocking_message_id_to_channel.pop(msg_id, None)
+
         return True
 
     def _send_message_sync_impl(self, *args, **kwargs):
@@ -603,19 +619,27 @@ class Dispatcher:
             # The sender might or might not want a reply, but has to be informed about exceptions.
             # Create an event to signal when reply comes in.
             reply_event = asyncio.Event()
-            if is_group_msg:
-                self._group_reply_event_table[message.id] = reply_event
-                submap = self._channel_map[ChannelTargetType.GROUP]
-                id_to_use = message.group_id
-                msg_type = "Group"
-            elif is_reply_msg:
+            if is_reply_msg:
                 submap = self._channel_map[ChannelTargetType.REPLY]
                 id_to_use = 0
                 msg_type = "Reply"
                 # We don't want a reply to a reply
                 reply_event = None
+            elif is_group_msg:
+                if message.response_required:
+                    self._group_reply_event_table[message.id] = reply_event
+                else:
+                    # Sender doesn't care about reply -- no need to wait for one
+                    reply_event = None
+                submap = self._channel_map[ChannelTargetType.GROUP]
+                id_to_use = message.group_id
+                msg_type = "Group"
             else:
-                self._reply_event_table[message.id] = reply_event
+                if message.response_required:
+                    self._reply_event_table[message.id] = reply_event
+                else:
+                    # Sender doesn't care about reply -- no need to wait for one
+                    reply_event = None
                 submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
                 id_to_use = message.destination_id
                 msg_type = "Single Destination"
