@@ -256,7 +256,6 @@ class FilteringTable:
         """
         for filter_entry in self._entries:
             if filter_entry.test(message):
-                print("xxxx table is firing off message", message.get_info())
                 self._in_progress_message_count += 1
                 filter_type, result = await filter_entry.execute(message)
                 self._in_progress_message_count -= 1

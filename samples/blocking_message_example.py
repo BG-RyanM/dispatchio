@@ -30,15 +30,12 @@ class Server(BasicMessageListener):
         """Callback that receives messages from client"""
         if message.message_type == "A":
             await asyncio.sleep(3.0)
-            print("xxxx returning A response")
             return "'A' response"
         elif message.message_type == "B":
             await asyncio.sleep(0.4)
-            print("xxxx returning B response")
             return "'B' response"
         elif message.message_type == "C":
             await asyncio.sleep(0.5)
-            print("xxxx returning C response")
             return "'C' response"
 
 

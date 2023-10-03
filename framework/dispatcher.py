@@ -4,6 +4,7 @@ from typing import List, Optional, Union, Dict, Tuple, Any, Literal, overload
 from asyncio import Lock, Queue, Event, Task, Future, CancelledError, TimeoutError
 import logging
 
+import framework.listener
 from framework.listener import DeferredResponse
 from framework.basic_listener import MessageListener
 from framework.message import Message, SyncMessage, AsyncMessage
@@ -14,12 +15,13 @@ class ChannelTargetType(IntEnum):
     SINGLE_DESTINATION = 0
     GROUP = 1
     OTHER_PROCESS = 2
+    REPLY = 3  # for replies only (no specific target)
 
 
 class DispatcherChannel:
     """
     A `channel` represents a particular target that the Dispatcher knows about whether a destination ID,
-    a group ID, or a process ID.
+    a group ID, or a process ID. There's also a channel for replies.
     """
 
     def __init__(self, target_type: ChannelTargetType, id: Union[str, int]):
@@ -52,6 +54,7 @@ class DispatcherChannel:
             ChannelTargetType.SINGLE_DESTINATION: "Destination ID",
             ChannelTargetType.GROUP: "Group ID",
             ChannelTargetType.OTHER_PROCESS: "Process ID",
+            ChannelTargetType.REPLY: "Replies",
         }
         return f"{type_map[self.target_type]}: {self.id}"
 
@@ -105,10 +108,15 @@ class Dispatcher:
             ChannelTargetType.GROUP,
             ChannelTargetType.SINGLE_DESTINATION,
             ChannelTargetType.OTHER_PROCESS,
+            ChannelTargetType.REPLY,
         ]
         self._channel_map: Dict[
             ChannelTargetType, Dict[Union[str, int], DispatcherChannel]
         ] = {i: {} for i, target in enumerate(targets)}
+        # Create a channel just for replies
+        self._channel_map[ChannelTargetType.REPLY][0] = DispatcherChannel(
+            ChannelTargetType.REPLY, 0
+        )
 
         self._blocking_message_id_to_channel: Dict[
             Union[str, int], DispatcherChannel
@@ -454,15 +462,14 @@ class Dispatcher:
                             self._logger.debug(
                                 f"Dispatching message from queue: {message.get_info()}"
                             )
-                            print("**** out goes message", message.get_info())
                             # Reply won't be awaited directly; a task will be created to wait
+                            # If message is itself a reply, then there won't be any waiting for a reply to it
                             await self._send_message_impl(message)
 
                 # Deal with any replies to single destination messages that have come back
                 remove_ids = []
                 for msg_id, task in self._reply_task_table.items():
                     if task.done():
-                        print("**** got response to message", msg_id)
                         self._logger.debug(f"Got response to message with ID {msg_id}")
                         try:
                             result = task.result()
@@ -517,7 +524,7 @@ class Dispatcher:
             await asyncio.sleep(0.00001)
 
     def _handle_message_reply(self, msg_id: int, reply: Any) -> bool:
-        if isinstance(reply, DeferredResponse):
+        if type(reply) is DeferredResponse:
             return False
 
         if not self._reply_event_table.get(msg_id):
@@ -569,6 +576,7 @@ class Dispatcher:
         is_group_msg = (message.destination_id is None) and (
             message.group_id is not None
         )
+        is_reply_msg = message.is_response
         async with self._lock:
             # The sender might or might not want a reply, but has to be informed about exceptions.
             # Create an event to signal when reply comes in.
@@ -578,6 +586,12 @@ class Dispatcher:
                 submap = self._channel_map[ChannelTargetType.GROUP]
                 id_to_use = message.group_id
                 msg_type = "Group"
+            elif is_reply_msg:
+                submap = self._channel_map[ChannelTargetType.REPLY]
+                id_to_use = 0
+                msg_type = "Reply"
+                # We don't want a reply to a reply
+                reply_event = None
             else:
                 self._reply_event_table[message.id] = reply_event
                 submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
@@ -624,7 +638,6 @@ class Dispatcher:
         # TODO: special stuff if have to go another dispatcher
 
         if message.is_response:
-            print("**** what?")
             # This is a response to some sent message, so alert whoever's waiting on a reply
             # (Waiting in _queue_message_impl())
             handled = self._handle_message_reply(message.id, message.content)
@@ -635,9 +648,6 @@ class Dispatcher:
             channel = submap.get(message.destination_id)
             if channel:
                 # Create a task to wait for response, self._run_loop() will deal with eventual reply
-                print(
-                    "**** making task to wait for reply to message", message.get_info()
-                )
                 reply_task = asyncio.create_task(
                     channel.listeners[0].handle_message(message)
                 )
