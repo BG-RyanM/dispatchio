@@ -110,8 +110,16 @@ Asynchronous message
 | Message Queue    | Message placed on queue                                        | Same                   |
 | Another Listener | Message goes to other listener's asynchronous handling pathway | Same                   |
 
+## Sample Programs
 
-## Game
+`blocking_message_example.py`: Demonstrates use of blocking and non-blocking messages.       
+`card_dealer.py`: Demonstrates message use in card-dealing phase of a game.   
+`card_dealer_sync.py`: Same as above, but with synchronous messages.   
+`deferred_reply_example.py`: Demonstrates concept of deferred replies.        
+
+## Game (ignore this section for now)
+
+_(For future implementation)_
 
 Picture a two-dimensional grid. The grid is peopled by characters, each of whom occupies a single point. Characters have "types", each represented by a letter of the alphabet. The goal of each character is to wander the grid and find their "partner", another character of the same type.
 

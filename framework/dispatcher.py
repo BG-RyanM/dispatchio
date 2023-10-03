@@ -404,14 +404,19 @@ class Dispatcher:
             will be ignored. If not given, other params will be applied in building a new
             message.
         :param message_type: type of message, e.g. "GetUserInfo" or "MousePress"
-        :param id: unique ID to give to message. If -1, ID will be assigned automatically
+        :param id: unique ID to give to message. If -1, ID will be assigned automatically.
+            Replies will use this same ID.
         :param source_id: source "address" of message. Generally, the same as a destination ID.
         :param destination_id: destination "address" of message
         :param group_id: if given, specifies group of listeners to send message copies to
         :param response_required: if True, a response must be given.
             TODO: more notes
-        :param is_response: if True, this message is a response to another
-        :param is_blocking: TODO: explain
+        :param is_response: if True, this message is a response to another. It must be given
+            same ID as message to which it is replying. Not necessary to specify a destination
+            ID.
+        :param is_blocking: if True, no other message will be sent to the recipient until
+            a reply comes back. However, subsequent messages are still queued and will be
+            dispatched when their turn comes.
         :param timeout: if given, specifies how long to wait for response
         :param content: message content object. Should be cast-able to dict.
         :return: reply from other side, or None, if not given
@@ -437,6 +442,19 @@ class Dispatcher:
         """
         Main workhorse function, runs continuously. Sends queued outgoing messages, and deals with
         futures/tasks waiting for message reply.
+
+        Notes on potentially confusing handling of messages and responses (applies to async
+        messages only):
+
+        Order of events
+        1. Message arrives in _queue_message_impl(). A reply event is created (triggered when reply
+            comes in). The message goes onto an outgoing queue in appropriate channel.
+        2. _queue_message_impl() then waits for the reply event to be triggered. When that happens,
+            reply is returned to the caller. In the meantime, Step 3 applies.
+        3. Message is eventually pulled from outgoing queue and given to _send_message_impl(),
+            which creates a task or future to await reply. In the meantime, Step 4 applies.
+        4. When task or future completes (checked in this function), results are stored and reply
+            event is triggered.
         """
         self._logger.info("In dispatcher run loop.")
         while not self._shutdown:
@@ -524,6 +542,10 @@ class Dispatcher:
             await asyncio.sleep(0.00001)
 
     def _handle_message_reply(self, msg_id: int, reply: Any) -> bool:
+        """
+        Helper function called when message receives a reply. Returns true if some task
+        is waiting on reply and will now get it.
+        """
         if type(reply) is DeferredResponse:
             return False
 

@@ -44,6 +44,7 @@ async def main():
     await dispatcher.register_listener(Server("server"))
 
     async def _await_replies(tasks):
+        # Awaits expected replies from server, and prints results as they come in
         done_tasks = set()
         while len(done_tasks) < 3:
             for task in tasks:
