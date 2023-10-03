@@ -4,7 +4,7 @@ from asyncio import Lock, Queue
 import logging
 
 from framework.listener import MessageListener
-from framework.message import Message
+from framework.message import Message, SyncMessage, AsyncMessage
 from framework.exceptions import ListenerError
 
 _logger = logging.getLogger(__name__)
@@ -197,13 +197,13 @@ class FilteringTable:
             for i in range(len(self._entries)):
                 self._entries[i].priority = i
 
-    def handle_message_sync(self, message: Union[Message, Dict]) -> Tuple[FilterTargetType, Any]:
+    def handle_message_sync(self, message: Union[SyncMessage, Dict]) -> Tuple[FilterTargetType, Any]:
         """
         Handles a message synchronously.
         :param message: --
         :return: (filter target type, result of action, if any)
         """
-        if isinstance(message, Message):
+        if isinstance(message, SyncMessage):
             message = message.to_dict()
         for filter_entry in self._entries:
             if filter_entry.test(message):
@@ -211,13 +211,13 @@ class FilteringTable:
                 return filter_type, result
         return FilterTargetType.NONE, None
 
-    async def handle_message(self, message: Union[Message, Dict]) -> Tuple[FilterTargetType, Any]:
+    async def handle_message(self, message: Union[AsyncMessage, Dict]) -> Tuple[FilterTargetType, Any]:
         """
         Handles a message asynchronously.
         :param message: --
         :return: (filter target type, result of action, if any)
         """
-        if isinstance(message, Message):
+        if isinstance(message, AsyncMessage):
             message = message.to_dict()
         for filter_entry in self._entries:
             if filter_entry.test(message):
@@ -235,7 +235,7 @@ class BasicMessageListener(MessageListener):
         self._lock = Lock()
         self._queue = Queue()
 
-    def handle_message_sync(self, message: Message) -> Any:
+    def handle_message_sync(self, message: SyncMessage) -> Any:
         """
         Handles a message synchronously.
         :param message: --
@@ -247,7 +247,7 @@ class BasicMessageListener(MessageListener):
             self._queue.put_nowait(message)
         return response
 
-    async def handle_message(self, message: Message) -> Any:
+    async def handle_message(self, message: AsyncMessage) -> Any:
         """
         Handles a message asynchronously.
         :param message: --

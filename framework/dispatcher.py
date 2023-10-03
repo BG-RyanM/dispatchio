@@ -4,7 +4,7 @@ from asyncio import Lock, Queue, Event, Task, Future, CancelledError, TimeoutErr
 import logging
 
 from framework.basic_listener import MessageListener
-from framework.message import Message
+from framework.message import Message, SyncMessage, AsyncMessage
 from framework.exceptions import RegistrationError, DispatcherError
 
 
@@ -137,14 +137,12 @@ class Dispatcher:
             self._listeners_by_group[group_name] = new_list
 
     @overload
-    def send_message_sync(self, message: Union[Message, Dict],
+    def send_message_sync(self, message: Union[SyncMessage, Dict],
                           message_type: Literal[""] = "",
                           id: Literal[-1] = -1,
                           source_id: Literal[None] = None,
                           destination_id: Literal[None] = None,
                           group_id: Literal[None] = None,
-                          response_required: Literal[False] = False,
-                          is_response: Literal[False] = False,
                           content: Literal[None] = None
                           ) -> Any:
         pass
@@ -156,20 +154,16 @@ class Dispatcher:
                           source_id: Union[str, int, None] = None,
                           destination_id: Union[str, int, None] = None,
                           group_id: Union[str, int, None] = None,
-                          response_required: bool = False,
-                          is_response: bool = False,
                           content: Any = None
                           ) -> Any:
         pass
 
-    def send_message_sync(self, message: Union[Message, Dict, None] = None,
+    def send_message_sync(self, message: Union[SyncMessage, Dict, None] = None,
                           message_type: str = "",
                           id: int = -1,
                           source_id: Union[str, int, None] = None,
                           destination_id: Union[str, int, None] = None,
                           group_id: Union[str, int, None] = None,
-                          response_required: bool = False,
-                          is_response: bool = False,
                           content: Any = None
                           ) -> Any:
         """
@@ -192,11 +186,10 @@ class Dispatcher:
         """
         return self._send_message_sync_impl(message=message, message_type=message_type, id=id, source_id=source_id,
                                             destination_id=destination_id, group_id=group_id,
-                                            response_required=response_required, is_response=is_response,
                                             synchronous=True, content=content)
 
     @overload
-    async def send_message(self, message: Union[Message, Dict],
+    async def send_message(self, message: Union[AsyncMessage, Dict],
                            message_type: Literal[""] = "",
                            id: Literal[-1] = -1,
                            source_id: Literal[None] = None,
@@ -223,7 +216,7 @@ class Dispatcher:
                            ) -> Any:
         pass
 
-    async def send_message(self, message: Union[Message, Dict, None] = None,
+    async def send_message(self, message: Union[AsyncMessage, Dict, None] = None,
                            message_type: str = "",
                            id: int = -1,
                            source_id: Union[str, int, None] = None,
@@ -385,7 +378,7 @@ class Dispatcher:
                     raise result
                 return result
 
-    async def _send_message_impl(self, message: Message):
+    async def _send_message_impl(self, message: AsyncMessage):
         """
         Workhorse function for sending queued asynchronous messages. Doesn't wait for replies directly,
         but creates asyncio tasks to wait.
@@ -424,7 +417,11 @@ class Dispatcher:
         else:
             kwargs.pop("message", None)
             kwargs.pop("timeout", None)
-            message = Message(**kwargs)
+            kwargs.pop("synchronous", None)
+            if is_sync:
+                message = SyncMessage(**kwargs)
+            else:
+                message = AsyncMessage(**kwargs)
         if message.id == -1 and not is_sync:
             message.id = self._next_message_id
             self._next_message_id += 1

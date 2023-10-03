@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Union, Any
 from asyncio import Queue, wait_for
 
-from framework.message import Message
+from framework.message import Message, SyncMessage, AsyncMessage
 
 
 class DeferredResponse:
@@ -42,7 +42,7 @@ class MessageListener(ABC):
         self._id = id
 
     @abstractmethod
-    def handle_message_sync(self, message: Message) -> Any:
+    def handle_message_sync(self, message: SyncMessage) -> Any:
         """
         Handles a message synchronously.
         :param message: --
@@ -50,7 +50,7 @@ class MessageListener(ABC):
         """
 
     @abstractmethod
-    async def handle_message(self, message: Message) -> Any:
+    async def handle_message(self, message: AsyncMessage) -> Any:
         """
         Handles a message asynchronously.
         :param message: --
