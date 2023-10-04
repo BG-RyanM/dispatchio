@@ -6,18 +6,32 @@ Python message-passing framework
 
 This project is based on my twenty-five years of experience with message-passing or event-driven frameworks. I've worked in the game industry, in the defense industry, and in robotics. 
 
-A common feature of such frameworks is that they provide a loose coupling between caller code and called code, compared to the tight coupling of calling a Python function directly. Events or messages can be responded to (or not) at the recipient's discretion, possibly after some amount of time has passed. Messages/events can also be broadcast to multiple recipients. As you might imagine, this can be a very useful system to have when programming a game. Games are often full of independent agents (e.g. game characters) that interact with each other and the game world. Perhaps characters in a game might respond to a message that informs them that a gunshot has been fired nearby. The characters can then change their behavior to running for cover. Other characters might not take any interest in the gunshot at all, such as a bird.
+A common feature of such frameworks is that they provide a loose coupling between caller code and called code, compared to the tight coupling of calling a Python function directly. Events or messages can be responded to (or not) at the recipient's discretion, possibly after some amount of time has passed. Messages/events can also be broadcast to multiple recipients. 
 
-Another use for such frameworks is in the field of robotics, where systems might involve multiple processes running on different machines (or virtual machines, or containers) on a network. For developers of such a system, it's undesirable to have to think about the mechanisms for getting a message from Point A to Point B, such as the networking protocols in the middle. The developer simply wants to send and receive messages, and not have to worry about the pipes through which they pass.
+As you might imagine, this can be a very useful system to have when programming a game. Games are often full of largely independent agents (e.g. game characters) that interact with each other and the game world according to certain rules. Perhaps characters in a game might respond to a message that informs them that a gunshot has been fired nearby. The characters can then change their behavior to running for cover. Other characters might not take any interest in the gunshot at all, such as a bird. Or, when the player steps on a certain pressure plate, a message will go out that triggers some scriptable sequence of events set up by the level designer, such as a door opening. This application to simple scripting makes life easier for non-programmers on a development team, freeing programming talent up for other work. 
+
+Another use for such frameworks is in the field of robotics, where systems might involve multiple processes running on different machines (or virtual machines, or containers) on a network. For developers of such a system, it's undesirable to have to think much about the mechanisms for getting a message from Point A to Point B, such as the networking protocols in the middle. The developer simply wants to send and receive messages, and not have to worry about the pipes through which they pass.
 
 A challenge of developing such systems is that communication over a network can be delayed or unreliable, so messages sent by one entity to another must be decoupled from the reply the other might send back. There must be facilities for dealing with non-received replies.  
 
 ## What This Framework Does and Doesn't Do
+_(The TL;DR section)_
 
-dispatchio is built on top of Python's `async` features. Right now, there's no support for multi-threaded use.
+Features:
+* `dispatchio` is built on top of Python's `async` features.
+* Ability to send messages within a process, between processes, or through network
+* Ability to send either synchronous or asynchronous messages
+* Users often want replies or acknowledgements to messages, especially when a network is unreliable or the process receiving a message is prone to crashing. This framework takes care of that automatically.
+* Messages are guaranteed to be given to the recipient in the same order as sent. It's also possible (but not necessary) to require replies to come back in the same order as original message.
+* Different underlying networking layers can be used at user discretion, e.g. TCP/IP, Grpc, etc. 
+* `[TODO]` Records are kept of all messages, with option of storing in database, to aid with debugging.
 
-To be written:
-* Features for cross-process use and networking
+Not features
+* Right now, there's no support for multi-threaded use.
+
+Also, this framework is still a work in progress.
+
+_(Origin of name: it sounds like "pistachio" or "mustachio", which I found amusing. I'm a man of uncomplicated pleasures.)_
 
 ## Basic Concepts
 
@@ -83,6 +97,13 @@ Asynchronous message fields
 - Blocking (optional): if set, no other messages can be sent to destination/group until this one is handled. 
 - Content
 
+## Message Tunneler
+
+This abstract class enables communication with other processes, over a network, or with code written in another language, such as C++. In theory, a tunneler could even be used to turn a message into a record saved to some database.
+
+Message tunnelers are connected to the dispatcher, which routes messages to them (in fact, a tunnel is also listener). The tunneler packages up the messages and sends them through the underlying connection layer (e.g. TCP/IP) to a tunneler on the other side. That tunneler then hands the messages off to its own connected dispatcher.
+
+Some configuration and setup of tunnelers must be done by the user, but, once completed, sending messages between processes becomes as simple as sending them within a process.
 
 ### Lifecycle of message
 
@@ -130,6 +151,12 @@ Asynchronous message
 `deferred_reply_example.py`: Demonstrates concept of deferred replies.        
 `robustness_test.py`: Demonstrates that dispatcher can be shut down cleanly.
 `run_all_tests.py`: Runs all the sample programs that don't do anything elaborate.
+
+## Features to Be Added
+
+To be written:
+* Features for cross-process use and networking
+* Features for keeping a record of messages
 
 ## Game (ignore this section for now)
 

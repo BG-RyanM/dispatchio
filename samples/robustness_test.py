@@ -15,7 +15,8 @@ from framework.dispatcher import Dispatcher
 
 """
 Test to demonstrate that Dispatcher will clean itself up and shut down, even while message
-responses are being awaited.
+responses are being awaited. Also does some other things that might potentially break
+a system like this.
 """
 
 
