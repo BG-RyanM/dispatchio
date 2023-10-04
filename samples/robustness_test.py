@@ -9,7 +9,7 @@ base_dir = os.path.join(current_dir, "../")
 base_dir = os.path.abspath(base_dir)
 sys.path.append(base_dir)
 
-from framework.message import Message, AsyncMessage
+from framework.message import Message, AsyncMessage, MessageError
 from framework.basic_listener import BasicMessageListener
 from framework.dispatcher import Dispatcher
 
@@ -41,6 +41,16 @@ async def main():
     server = Server("server")
     await dispatcher.register_listener(server)
     await dispatcher.register_listener_in_group(server, "B group")
+
+    # Send an invalid message and make sure it triggers an exception
+    try:
+        await dispatcher.dispatch_message(
+            message_type="ZZZ", destination_id="server", group_id="B group"
+        )
+    except MessageError:
+        print("Bad message produced exception as expected")
+    else:
+        print("Oops, bad message did not raise exception")
 
     # Dispatch message for which response is expected to take a long time, then
     # deregister listener. This shouldn't break anything.

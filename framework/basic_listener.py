@@ -3,11 +3,14 @@ from enum import IntEnum
 from asyncio import Lock, Queue
 import logging
 
+from framework.logging import MessagingLogger
 from framework.listener import MessageListener
 from framework.message import Message, SyncMessage, AsyncMessage
 from framework.exceptions import ListenerError
 
-_logger = logging.getLogger(__name__)
+_logger = MessagingLogger.make_instance(
+    __name__, level=logging.WARNING, print_to_stdout=True
+)
 
 
 class FilterTargetType(IntEnum):

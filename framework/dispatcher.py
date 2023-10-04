@@ -7,8 +7,9 @@ import logging
 import framework.listener
 from framework.listener import DeferredResponse
 from framework.basic_listener import MessageListener
-from framework.message import Message, SyncMessage, AsyncMessage
+from framework.message import Message, SyncMessage, AsyncMessage, MessageError
 from framework.exceptions import RegistrationError, DispatcherError
+from framework.logging import MessagingLogger
 
 
 class ChannelTargetType(IntEnum):
@@ -79,7 +80,10 @@ class Dispatcher:
         else:
             Dispatcher._initialized = True
 
-        self._logger = logging.getLogger(__name__)
+        self._logger = MessagingLogger.make_instance(
+            __name__, level=logging.WARNING, print_to_stdout=True
+        )
+
         self._logger.info("Created message dispatcher")
 
         self._next_listener_id = 0
@@ -127,13 +131,13 @@ class Dispatcher:
         return Dispatcher()
 
     async def shutdown(self):
-        print("**** cancelling tasks and futures...")
+        self._logger.info("cancelling tasks and futures...")
         for msg_id, task in self._reply_task_table.items():
             task.cancel()
         for msg_id, future in self._group_reply_future_table.items():
             future.cancel()
 
-        print("**** tasks and future cancelled")
+        self._logger.info("tasks and future cancelled")
         # Wait until every task and future has died
         active_tasks = True
         active_futures = True
@@ -141,12 +145,12 @@ class Dispatcher:
             active_tasks = len(self._reply_task_table) > 0
             active_futures = len(self._group_reply_future_table) > 0
             await asyncio.sleep(0.1)
-        print("**** tasks and futures dead")
-        print("**** shutting down main loop...")
+        self._logger.info("tasks and futures dead")
+        self._logger.info("shutting down main loop...")
         self._shutdown = True
 
         await self._run_loop_task
-        print("**** main loop shut down")
+        self._logger.info("main loop shut down")
 
         async with self._lock:
             # Destroy remaining stuff
@@ -544,7 +548,6 @@ class Dispatcher:
                 remove_ids = []
                 for msg_id, future in self._group_reply_future_table.items():
                     if future.done():
-                        print("**** future is kaput")
                         self._logger.debug(
                             f"Got responses to group message with ID {msg_id}"
                         )
@@ -620,6 +623,11 @@ class Dispatcher:
         Workhorse function for sending synchronous message and dealing with reply.
         """
         message = self._get_or_make_message(args, kwargs)
+
+        valid, reason = message.validate()
+        if not valid:
+            raise MessageError(f"invalid message: {reason}")
+
         # TODO: special stuff if have to go another dispatcher
         if message.destination_id is not None:
             submap = self._channel_map[ChannelTargetType.SINGLE_DESTINATION]
@@ -647,6 +655,11 @@ class Dispatcher:
         timeout = kwargs.get("timeout", None)
 
         message = self._get_or_make_message(args, kwargs)
+
+        valid, reason = message.validate()
+        if not valid:
+            raise MessageError(f"invalid message: {reason}")
+
         msg_id = message.id
         is_group_msg = (message.destination_id is None) and (
             message.group_id is not None

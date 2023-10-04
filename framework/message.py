@@ -1,5 +1,9 @@
-from typing import List, Optional, Union, Any, Dict
+from typing import List, Optional, Union, Any, Dict, Tuple
 from abc import ABC, abstractmethod
+
+
+class MessageError(Exception):
+    """Raised when there's some problem with a Message"""
 
 
 class Message(ABC):
@@ -29,15 +33,21 @@ class Message(ABC):
         """Make a copy of Message"""
 
     def get_info(self):
+        """Returns informational string about message"""
         return (
             f"type: {self.message_type}, ID: {self.id}, source ID: {self.source_id}, "
             f"destination ID: {self.destination_id}, group ID: {self.group_id}"
         )
 
     def get_dispatcher_target_id(self):
+        """Returns ID of where message is going, whether destination ID, group ID, or something else."""
         if self.destination_id is not None:
             return self.destination_id
         return self.group_id
+
+    def validate(self) -> Tuple[bool, Optional[str]]:
+        """Returns True if message fields are valid, otherwise False and string with reason"""
+        return False, None
 
 
 class SyncMessage(Message):
@@ -84,6 +94,12 @@ class SyncMessage(Message):
             destination_id=self.destination_id,
             group_id=self.group_id,
         )
+
+    def validate(self) -> Tuple[bool, Optional[str]]:
+        """Returns True if message fields are valid, otherwise False and string with reason"""
+        if self.destination_id and self.group_id:
+            return False, "Message can't have destination ID and group ID at same time"
+        return True, None
 
 
 class AsyncMessage(Message):
@@ -143,3 +159,13 @@ class AsyncMessage(Message):
             is_response=self.is_response,
             is_blocking=self.is_blocking,
         )
+
+    def validate(self) -> Tuple[bool, Optional[str]]:
+        """Returns True if message fields are valid, otherwise False and string with reason"""
+        if self.destination_id and self.group_id:
+            return False, "Message can't have destination ID and group ID at same time"
+        if self.id == -1:
+            return False, "No ID set for message"
+        if self.response_required and self.is_response:
+            return False, "Message can't require response and be one at the same time"
+        return True, None

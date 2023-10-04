@@ -39,7 +39,7 @@ Messages can also be passed by the local dispatcher to other dispatchers that ar
 
 Message sending can be either synchronous or asynchronous. If the former, a response is delivered instantly, just like calling the target function directly. This can only work with recipients in the same process.
 
-If a message is asynchronous, the dispatcher tries to get it to its destination as quickly as possible, then to return to the sender any reply that comes back. The dispatcher tries to block its main loop as little as possible, creating `asyncio` tasks that separately transmit messages and wait for replies.
+If a message is asynchronous, the dispatcher tries to get it to its destination as quickly as possible, then to return to the sender any reply that comes back. The dispatcher tries to block its main loop as little as possible, creating `asyncio` tasks that separately transmit messages and wait for replies (if desired).
 
 The two key functions offered by the dispatcher are:
 
@@ -128,7 +128,8 @@ Asynchronous message
 `card_dealer.py`: Demonstrates message use in card-dealing phase of a game.   
 `card_dealer_sync.py`: Same as above, but with synchronous messages.   
 `deferred_reply_example.py`: Demonstrates concept of deferred replies.        
-`robustness_test.py`: Demonstrates that dispatcher can be shut down cleanly.        
+`robustness_test.py`: Demonstrates that dispatcher can be shut down cleanly.
+`run_all_tests.py`: Runs all the sample programs that don't do anything elaborate.
 
 ## Game (ignore this section for now)
 
